@@ -102,17 +102,32 @@
         <!-- Main Card Container -->
         <main class="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-xl p-6 shadow-xl space-y-6">
             
-            <!-- Importer Name (mandatory) -->
-            <div>
-                <label for="importerName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Your Name <span class="text-rose-400">*</span></label>
-                <input type="text" id="importerName" required maxlength="80" autocomplete="name" placeholder="Enter your full name" class="w-full text-sm text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
-                <p id="nameError" class="hidden text-xs text-rose-400 mt-1.5">Name is required before you can process and export results.</p>
+            <!-- Full Name + Mobile Phone Number (mandatory) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="importerName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Full Name <span class="text-rose-400">*</span></label>
+                    <input type="text" id="importerName" required maxlength="80" autocomplete="name" placeholder="Enter your full name" class="w-full text-sm text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+                    <p id="nameError" class="hidden text-xs text-rose-400 mt-1.5">Full name is required.</p>
+                </div>
+                <div>
+                    <label for="mobileNumber" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Mobile Phone Number <span class="text-rose-400">*</span></label>
+                    <input type="tel" id="mobileNumber" required inputmode="tel" maxlength="20" autocomplete="tel" placeholder="e.g. 09171234567" class="w-full text-sm text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+                    <p id="phoneError" class="hidden text-xs text-rose-400 mt-1.5">Enter a valid mobile number (7 to 15 digits).</p>
+                </div>
             </div>
 
             <!-- CSV File Selection -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Select results.csv File</label>
-                <input type="file" id="csvFile" accept=".csv" class="w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-sky-600 file:text-white hover:file:bg-sky-500 file:cursor-pointer border border-slate-800/80 rounded-lg bg-slate-950/80 p-1">
+                <input type="file" id="csvFile" class="w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-sky-600 file:text-white hover:file:bg-sky-500 file:cursor-pointer border border-slate-800/80 rounded-lg bg-slate-950/80 p-1">
+                <details class="mt-2.5 group">
+                    <summary class="cursor-pointer text-xs text-sky-400 hover:text-sky-300 select-none">Can't select the file? Paste the CSV text instead</summary>
+                    <div class="mt-2 space-y-2">
+                        <p class="text-xs text-slate-400">Open <code class="bg-slate-950 px-1 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> in any app, select all, copy, and paste everything below, including the header row.</p>
+                        <textarea id="csvPaste" rows="5" spellcheck="false" placeholder="Paste the full contents of results.csv here" class="w-full text-xs font-mono text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"></textarea>
+                        <button id="loadPasteBtn" type="button" class="text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg px-4 py-2 transition-colors">Load pasted CSV</button>
+                    </div>
+                </details>
             </div>
 
             <!-- Duplicate Status Box -->
@@ -167,6 +182,31 @@
         const nameInput = document.getElementById('importerName');
         const nameError = document.getElementById('nameError');
         const getName = () => nameInput.value.trim();
+        const phoneInput = document.getElementById('mobileNumber');
+        const phoneError = document.getElementById('phoneError');
+        const getPhone = () => phoneInput.value.trim();
+        const phoneValid = () => {
+            const d = getPhone().replace(/\D/g, '');
+            return /^\+?[\d\s\-()]+$/.test(getPhone()) && d.length >= 7 && d.length <= 15;
+        };
+        const identityValid = () => !!getName() && phoneValid();
+
+        // Full name and mobile number are both mandatory; show errors and focus the first bad field
+        function identityOk() {
+            let ok = true;
+            if (!getName()) {
+                nameError.classList.remove('hidden');
+                nameInput.classList.add('border-rose-500');
+                ok = false;
+            }
+            if (!phoneValid()) {
+                phoneError.classList.remove('hidden');
+                phoneInput.classList.add('border-rose-500');
+                ok = false;
+            }
+            if (!ok) (!getName() ? nameInput : phoneInput).focus();
+            return ok;
+        }
 
         const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const norm = k => String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -205,51 +245,78 @@
             }
         }
 
-        // Keep the Importer column and export state in sync with the name field
-        nameInput.addEventListener('input', () => {
+        // Keep the Name/Mobile columns and export state in sync with the two fields
+        function onIdentityInput() {
             nameError.classList.add('hidden');
+            phoneError.classList.add('hidden');
             nameInput.classList.remove('border-rose-500');
+            phoneInput.classList.remove('border-rose-500');
             if (parsedData.length) renderTable();
-            if (processed) setExportState(getName() ? parsedData.filter(r => r._valid).length : 0);
-        });
+            if (processed) setExportState(identityValid() ? parsedData.filter(r => r._valid).length : 0);
+        }
+        nameInput.addEventListener('input', onIdentityInput);
+        phoneInput.addEventListener('input', onIdentityInput);
 
-        // Preview the raw CSV (all fields) as soon as a file is chosen
-        csvFile.addEventListener('change', () => {
+        function resetLoaded() {
             parsedData = [];
             csvKeys = [];
             processed = false;
             statusBox.classList.add('hidden');
             resultsSection.classList.add('hidden');
             setExportState(0);
+        }
+
+        function ingestParsed(results) {
+            parsedData = results.data;
+            csvKeys = (results.meta.fields && results.meta.fields.length) ? results.meta.fields : Object.keys(parsedData[0] || {});
+            if (!parsedData.length) {
+                alert('The CSV appears to be empty.');
+                return;
+            }
+            renderTable();
+        }
+
+        // Preview the raw CSV (all fields) as soon as a file is chosen
+        csvFile.addEventListener('change', () => {
+            resetLoaded();
             if (!csvFile.files.length) return;
 
-            Papa.parse(csvFile.files[0], {
+            // No "accept" filter on the input (Android Chrome greys out CSVs with unusual MIME types), so check here
+            const picked = csvFile.files[0];
+            if (!/\.(csv|txt)$/i.test(picked.name) && !/csv|text/i.test(picked.type || '')) {
+                if (!confirm('"' + picked.name + '" does not look like a CSV file. Use it anyway?')) {
+                    csvFile.value = '';
+                    return;
+                }
+            }
+
+            Papa.parse(picked, {
                 header: true,
                 skipEmptyLines: true,
-                complete: function(results) {
-                    parsedData = results.data;
-                    csvKeys = (results.meta.fields && results.meta.fields.length) ? results.meta.fields : Object.keys(parsedData[0] || {});
-                    if (!parsedData.length) {
-                        alert('The selected CSV file appears to be empty.');
-                        return;
-                    }
-                    renderTable();
-                },
+                complete: ingestParsed,
                 error: function(err) {
                     alert('Error reading CSV file: ' + err.message);
                 }
             });
         });
 
-        document.getElementById('processBtn').addEventListener('click', () => {
-            if (!getName()) {
-                nameError.classList.remove('hidden');
-                nameInput.classList.add('border-rose-500');
-                nameInput.focus();
+        // Fallback for phones where the browser's file picker cannot reach the CSV: paste the text instead
+        document.getElementById('loadPasteBtn').addEventListener('click', () => {
+            const text = document.getElementById('csvPaste').value.trim();
+            if (!text) {
+                alert('Paste the contents of results.csv into the box first.');
                 return;
             }
-            if (!csvFile.files.length) {
-                alert('Please select a results.csv file first.');
+            resetLoaded();
+            csvFile.value = '';
+            const res = Papa.parse(text, { header: true, skipEmptyLines: true });
+            ingestParsed(res);
+        });
+
+        document.getElementById('processBtn').addEventListener('click', () => {
+            if (!identityOk()) return;
+            if (!csvFile.files.length && !parsedData.length) {
+                alert('Please select a results.csv file or paste the CSV text first.');
                 return;
             }
             if (!parsedData.length) {
@@ -362,6 +429,12 @@
             return s;
         }
 
+        // Round to a fixed number of decimals; blank if not numeric
+        function roundNum(v, digits) {
+            const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+            return isNaN(n) ? '' : Number(n.toFixed(digits));
+        }
+
         function techBandOf(v) {
             const s = String(v || '').toUpperCase();
             if (/NR|5G/.test(s)) return '5G';
@@ -379,13 +452,9 @@
         exportBtn.addEventListener('click', async () => {
             if (exportBtn.disabled) return;
 
+            if (!identityOk()) return;
             const name = getName();
-            if (!name) {
-                nameError.classList.remove('hidden');
-                nameInput.classList.add('border-rose-500');
-                nameInput.focus();
-                return;
-            }
+            const phone = getPhone();
             if (!SCRIPT_URL) {
                 showSyncStatus('err', '<strong>Export not configured:</strong> the Google Sheet web app URL (<code>SCRIPT_URL</code>) has not been set in this file yet.');
                 return;
@@ -410,8 +479,9 @@
                 testId: r._testId,
                 dl: toMbps(r[m.dl], m.dl),
                 ul: toMbps(r[m.ul], m.ul),
-                lat: m.lat ? r[m.lat] : '',
-                lon: m.lon ? r[m.lon] : '',
+                lat: m.lat ? roundNum(r[m.lat], 3) : '',
+                lon: m.lon ? roundNum(r[m.lon], 3) : '',
+                phone: phone,
                 entrySource: EXPORT_SOURCE_TAG
             }));
 
@@ -445,20 +515,24 @@
             document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : 'CSV Preview';
 
             const lead = processed
-                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Name</th><th class="${th}">Source Tag</th>`
-                : `<th class="${th}">#</th><th class="${th}">Name</th>`;
+                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Source Tag</th>`
+                : `<th class="${th}">#</th><th class="${th}">Name</th><th class="${th}">Mobile</th>`;
             headerRow.innerHTML = lead + csvKeys.map(k => `<th class="${th}">${esc(k)}</th>`).join('');
 
             const importer = getName();
             const importerCell = importer
                 ? esc(importer)
                 : '<span class="text-slate-600 italic">enter name</span>';
-            parsedData.forEach(r => { r._importer = importer; });
+            const phone = getPhone();
+            const phoneCell = phone
+                ? esc(phone)
+                : '<span class="text-slate-600 italic">enter number</span>';
+            parsedData.forEach(r => { r._importer = importer; r._phone = phone; });
             const rows = parsedData.slice(0, PREVIEW_ROW_LIMIT);
             bodyRow.innerHTML = rows.map((row, i) => {
                 const cells = csvKeys.map(k => `<td class="${td}" title="${esc(row[k])}">${esc(row[k])}</td>`).join('');
                 if (!processed) {
-                    return `<tr class="hover:bg-slate-800/40"><td class="${td} text-slate-500">${i + 1}</td><td class="${td} text-sky-300">${importerCell}</td>${cells}</tr>`;
+                    return `<tr class="hover:bg-slate-800/40"><td class="${td} text-slate-500">${i + 1}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td>${cells}</tr>`;
                 }
                 const status = row._valid
                     ? `<span class="px-2 py-0.5 text-xs bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 rounded">Valid</span>`
@@ -466,7 +540,7 @@
                 const reasons = row._reasons.length
                     ? row._reasons.map(r => `<span class="px-2 py-0.5 text-xs bg-amber-900/80 text-amber-300 border border-amber-700/60 rounded mr-1">${esc(r)}</span>`).join('')
                     : '<span class="text-slate-600">-</span>';
-                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
+                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
             }).join('');
 
             const shown = Math.min(parsedData.length, PREVIEW_ROW_LIMIT);
