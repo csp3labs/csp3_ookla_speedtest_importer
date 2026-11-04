@@ -102,19 +102,25 @@
         <!-- Main Card Container -->
         <main class="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-xl p-6 shadow-xl space-y-6">
             
-            <!-- Full Name + Mobile Phone Number (mandatory) -->
+            <!-- Engineer Name + Team Assignment (dropdowns) + Mobile Phone Number: all mandatory -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <label for="importerName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Full Name <span class="text-rose-400">*</span></label>
-                    <input type="text" id="importerName" required maxlength="80" autocomplete="name" placeholder="Enter your full name" class="w-full text-sm text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
-                    <p id="nameError" class="hidden text-xs text-rose-400 mt-1.5">Full name is required.</p>
+                    <label for="importerName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Engineer Name <span class="text-rose-400">*</span></label>
+                    <select id="importerName" required disabled style="color-scheme: dark;" class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"><option value="">Loading names...</option></select>
+                    <p id="nameError" class="hidden text-xs text-rose-400 mt-1.5">Select your name from the list.</p>
                 </div>
                 <div>
+                    <label for="teamAssignment" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Team Assignment <span class="text-rose-400">*</span></label>
+                    <select id="teamAssignment" required disabled style="color-scheme: dark;" class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"><option value="">Loading teams...</option></select>
+                    <p id="teamError" class="hidden text-xs text-rose-400 mt-1.5">Select your team from the list.</p>
+                </div>
+                <div class="sm:col-span-2">
                     <label for="mobileNumber" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Mobile Phone Number <span class="text-rose-400">*</span></label>
-                    <input type="tel" id="mobileNumber" required inputmode="tel" maxlength="20" autocomplete="tel" placeholder="e.g. 09171234567" class="w-full text-sm text-slate-100 placeholder-slate-500 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
-                    <p id="phoneError" class="hidden text-xs text-rose-400 mt-1.5">Enter a valid mobile number (7 to 15 digits).</p>
+                    <input type="tel" id="mobileNumber" required inputmode="numeric" maxlength="15" autocomplete="tel" placeholder="09XXXXXXXXX" class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder-slate-500">
+                    <p id="phoneError" class="hidden text-xs text-rose-400 mt-1.5">Enter an 11-digit mobile number starting with 0 (e.g. 09171234567).</p>
                 </div>
             </div>
+            <p id="listsNote" class="text-xs text-amber-300 min-h-[1rem]"></p>
 
             <!-- CSV File Selection -->
             <div>
@@ -172,7 +178,7 @@
         // ---- Google Sheet sync settings ----
         // Deployed Apps Script Web App URL (ends with /exec):
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtMH8vRjM_QlDgQ2ainbExqm5QPZ4ChqxnKDA96czagUCwGcY_xH52uNyqjKAdSfhGvQ/exec";
-        const SCRIPT_TOKEN = "CSP3_OOKLA_EXPORTER";
+        const SCRIPT_TOKEN = "CSP3_OOKLA_IMPORTER";
         const PREVIEW_ROW_LIMIT = 500;
 
         const csvFile = document.getElementById('csvFile');
@@ -182,30 +188,37 @@
         const nameInput = document.getElementById('importerName');
         const nameError = document.getElementById('nameError');
         const getName = () => nameInput.value.trim();
+        const teamInput = document.getElementById('teamAssignment');
+        const teamError = document.getElementById('teamError');
+        const getTeam = () => teamInput.value.trim();
         const phoneInput = document.getElementById('mobileNumber');
         const phoneError = document.getElementById('phoneError');
-        const getPhone = () => phoneInput.value.trim();
-        const phoneValid = () => {
-            const d = getPhone().replace(/\D/g, '');
-            return /^\+?[\d\s\-()]+$/.test(getPhone()) && d.length >= 7 && d.length <= 15;
-        };
-        const identityValid = () => !!getName() && phoneValid();
+        const listsNote = document.getElementById('listsNote');
+        // Spaces, dashes, dots and brackets are ignored; the rest must be 11 digits starting with 0
+        const getPhone = () => phoneInput.value.replace(/[\s\-().]/g, '');
+        const phoneValid = () => /^0\d{10}$/.test(getPhone());
+        const identityValid = () => !!getName() && !!getTeam() && phoneValid();
 
-        // Full name and mobile number are both mandatory; show errors and focus the first bad field
+        // Engineer name, team and mobile number are all mandatory; show errors and focus the first bad field
         function identityOk() {
-            let ok = true;
+            let first = null;
             if (!getName()) {
                 nameError.classList.remove('hidden');
                 nameInput.classList.add('border-rose-500');
-                ok = false;
+                first = first || nameInput;
+            }
+            if (!getTeam()) {
+                teamError.classList.remove('hidden');
+                teamInput.classList.add('border-rose-500');
+                first = first || teamInput;
             }
             if (!phoneValid()) {
                 phoneError.classList.remove('hidden');
                 phoneInput.classList.add('border-rose-500');
-                ok = false;
+                first = first || phoneInput;
             }
-            if (!ok) (!getName() ? nameInput : phoneInput).focus();
-            return ok;
+            if (first) first.focus();
+            return !first;
         }
 
         const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -245,17 +258,64 @@
             }
         }
 
-        // Keep the Name/Mobile columns and export state in sync with the two fields
+        // Keep the Name/Mobile/Team columns and export state in sync with the three fields
         function onIdentityInput() {
-            nameError.classList.add('hidden');
-            phoneError.classList.add('hidden');
-            nameInput.classList.remove('border-rose-500');
-            phoneInput.classList.remove('border-rose-500');
+            [nameError, teamError, phoneError].forEach(el => el.classList.add('hidden'));
+            [nameInput, teamInput, phoneInput].forEach(el => el.classList.remove('border-rose-500'));
             if (parsedData.length) renderTable();
             if (processed) setExportState(identityValid() ? parsedData.filter(r => r._valid).length : 0);
         }
-        nameInput.addEventListener('input', onIdentityInput);
-        phoneInput.addEventListener('input', onIdentityInput);
+        ['input', 'change'].forEach(ev => [nameInput, teamInput, phoneInput].forEach(el => el.addEventListener(ev, onIdentityInput)));
+
+        // ---- Name and team dropdown lists (read from the "List" tab of the sheet via the Apps Script) ----
+        const LISTS_CACHE_KEY = 'csp3_ookla_lists_v1';
+
+        function fillSelect(sel, items, placeholder) {
+            sel.innerHTML = '';
+            const first = document.createElement('option');
+            first.value = '';
+            first.textContent = placeholder;
+            sel.appendChild(first);
+            items.forEach(v => {
+                const o = document.createElement('option');
+                o.value = v;
+                o.textContent = v;
+                sel.appendChild(o);
+            });
+            sel.disabled = items.length === 0;
+        }
+
+        function applyLists(lists, note) {
+            const prevName = nameInput.value, prevTeam = teamInput.value;
+            fillSelect(nameInput, lists.names, 'Select your name');
+            fillSelect(teamInput, lists.teams, 'Select your team');
+            if (lists.names.includes(prevName)) nameInput.value = prevName;
+            if (lists.teams.includes(prevTeam)) teamInput.value = prevTeam;
+            listsNote.textContent = note || '';
+        }
+
+        async function loadLists() {
+            listsNote.textContent = 'Loading name and team lists...';
+            try {
+                const res = await fetch(SCRIPT_URL + '?action=lists&token=' + encodeURIComponent(SCRIPT_TOKEN));
+                const data = await res.json();
+                if (data.status !== 'success') throw new Error(data.message || data.status || 'Could not load the lists');
+                const lists = { names: data.names || [], teams: data.teams || [] };
+                applyLists(lists, (lists.names.length && lists.teams.length) ? '' : 'The name or team list is empty. Ask the admin to fill in the List tab of the sheet.');
+                try { localStorage.setItem(LISTS_CACHE_KEY, JSON.stringify(lists)); } catch (e) { /* storage unavailable */ }
+            } catch (err) {
+                let cached = null;
+                try { cached = JSON.parse(localStorage.getItem(LISTS_CACHE_KEY) || 'null'); } catch (e) { /* ignore */ }
+                if (cached && cached.names && cached.teams) {
+                    applyLists(cached, 'Could not reach the sheet, so the last saved lists are shown.');
+                } else {
+                    fillSelect(nameInput, [], 'Names unavailable');
+                    fillSelect(teamInput, [], 'Teams unavailable');
+                    listsNote.textContent = 'Could not load the name and team lists (' + err.message + '). Check your connection and reload the page.';
+                }
+            }
+        }
+        loadLists();
 
         function resetLoaded() {
             parsedData = [];
@@ -455,6 +515,7 @@
             if (!identityOk()) return;
             const name = getName();
             const phone = getPhone();
+            const team = getTeam();
             if (!SCRIPT_URL) {
                 showSyncStatus('err', '<strong>Export not configured:</strong> the Google Sheet web app URL (<code>SCRIPT_URL</code>) has not been set in this file yet.');
                 return;
@@ -482,6 +543,7 @@
                 lat: m.lat ? roundNum(r[m.lat], 3) : '',
                 lon: m.lon ? roundNum(r[m.lon], 3) : '',
                 phone: phone,
+                team: team,
                 entrySource: EXPORT_SOURCE_TAG
             }));
 
@@ -496,7 +558,8 @@
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    showSyncStatus('ok', `<strong>Export complete:</strong> <strong>${data.added}</strong> row(s) added to the sheet, <strong>${data.skipped}</strong> skipped (Test ID already in the sheet).`);
+                    const rej = data.rejected ? ` <strong>${data.rejected}</strong> rejected by the sheet (${esc((data.rejectedDetails || []).join('; '))}).` : '';
+                    showSyncStatus(data.rejected ? 'warn' : 'ok', `<strong>Export complete:</strong> <strong>${data.added}</strong> row(s) added to the sheet, <strong>${data.skipped}</strong> skipped (Test ID already in the sheet).${rej}`);
                 } else {
                     showSyncStatus('err', `<strong>Export failed:</strong> ${esc(data.message || data.status || 'Unknown response from the sheet.')}`);
                 }
@@ -515,8 +578,8 @@
             document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : 'CSV Preview';
 
             const lead = processed
-                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Source Tag</th>`
-                : `<th class="${th}">#</th><th class="${th}">Name</th><th class="${th}">Mobile</th>`;
+                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
+                : `<th class="${th}">#</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th>`;
             headerRow.innerHTML = lead + csvKeys.map(k => `<th class="${th}">${esc(k)}</th>`).join('');
 
             const importer = getName();
@@ -527,12 +590,16 @@
             const phoneCell = phone
                 ? esc(phone)
                 : '<span class="text-slate-600 italic">enter number</span>';
-            parsedData.forEach(r => { r._importer = importer; r._phone = phone; });
+            const team = getTeam();
+            const teamCell = team
+                ? esc(team)
+                : '<span class="text-slate-600 italic">select team</span>';
+            parsedData.forEach(r => { r._importer = importer; r._phone = phone; r._team = team; });
             const rows = parsedData.slice(0, PREVIEW_ROW_LIMIT);
             bodyRow.innerHTML = rows.map((row, i) => {
                 const cells = csvKeys.map(k => `<td class="${td}" title="${esc(row[k])}">${esc(row[k])}</td>`).join('');
                 if (!processed) {
-                    return `<tr class="hover:bg-slate-800/40"><td class="${td} text-slate-500">${i + 1}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td>${cells}</tr>`;
+                    return `<tr class="hover:bg-slate-800/40"><td class="${td} text-slate-500">${i + 1}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td>${cells}</tr>`;
                 }
                 const status = row._valid
                     ? `<span class="px-2 py-0.5 text-xs bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 rounded">Valid</span>`
@@ -540,7 +607,7 @@
                 const reasons = row._reasons.length
                     ? row._reasons.map(r => `<span class="px-2 py-0.5 text-xs bg-amber-900/80 text-amber-300 border border-amber-700/60 rounded mr-1">${esc(r)}</span>`).join('')
                     : '<span class="text-slate-600">-</span>';
-                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
+                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
             }).join('');
 
             const shown = Math.min(parsedData.length, PREVIEW_ROW_LIMIT);
