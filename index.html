@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ookla Results Importer & Processor</title>
+    <title>CSP3 Ookla Results Importer</title>
     <!-- Inter Font Integration -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -56,8 +56,8 @@
         <!-- Header with Brand Badge -->
         <header class="mb-8 border-b border-slate-800/80 pb-6 flex items-center justify-between">
             <div>
-                <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">Ookla Results Importer</h1>
-                <p class="text-sm text-slate-400 mt-1">Process, check for duplicates, and sync your field speed test data seamlessly.</p>
+                <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">CSP3 Ookla Results Importer</h1>
+                <p class="text-sm text-slate-400 mt-1">Check your Ookla results.csv for duplicates and WiFi tests, then import the valid LTE/NR records into the shared sheet.</p>
             </div>
             <!-- Top Right Logo -->
             <div class="flex-shrink-0">
@@ -74,7 +74,7 @@
             <div>
                 <span class="inline-block text-[10px] font-bold uppercase tracking-widest text-sky-300 bg-sky-900/80 border border-sky-700/60 rounded px-2 py-0.5 mb-2">Recommended</span>
                 <h2 class="text-base font-semibold text-slate-100">Submit your test entries via the Google Form</h2>
-                <p class="text-sm text-slate-300 mt-0.5">The quickest way to log results without exporting any files. Use the CSV importer below only if you have a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> to process.</p>
+                <p class="text-sm text-slate-300 mt-0.5">The quickest way to log results without handling any files. Use the CSV importer below only if you have a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> to import.</p>
             </div>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSeVTc39CrQcuwhq1EaiYe7Iur9F-XgKIz39D89HPSMP98jV3Q/viewform" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 inline-flex items-center gap-2 text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white px-5 py-2.5 rounded-lg transition-colors shadow-sm">
                 Open Google Form Manual Entry
@@ -93,9 +93,9 @@
                 <li>Navigate to your test <strong>History</strong> tab.</li>
                 <li>Tap the export or share option to generate/save your test logs as a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> file.</li>
                 <li>Save or upload your exported <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> directly to <strong>Google Drive</strong> or <strong>OneDrive (Onebox)</strong> for easy retrieval.</li>
-                <li>Source tagging will be set to <strong class="text-sky-300">Ookla Speedtest CSV Importer</strong> for items exported via this tool.</li>
+                <li>Source tagging will be set to <strong class="text-sky-300">Ookla Speedtest CSV Importer</strong> for items imported via this tool.</li>
                 <li>Only <strong class="text-slate-200">1 unique test ID</strong> is recorded in the Google Sheet. Duplicates will be dropped.</li>
-                <li>Importer only considers <strong class="text-slate-200">LTE</strong> and <strong class="text-slate-200">NR</strong> test results. <strong class="text-slate-200">WIFI</strong> tests are excluded on the export.</li>
+                <li>Importer only considers <strong class="text-slate-200">LTE</strong> and <strong class="text-slate-200">NR</strong> test results. <strong class="text-slate-200">WIFI</strong> tests are excluded on the import.</li>
             </ol>
         </section>
 
@@ -121,6 +121,7 @@
                 </div>
             </div>
             <p id="listsNote" class="text-xs text-amber-300 min-h-[1rem]"></p>
+            <button id="retryListsBtn" type="button" class="hidden text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">Retry loading lists</button>
 
             <!-- CSV File Selection -->
             <div>
@@ -144,8 +145,8 @@
                 <button id="processBtn" class="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm text-sm">
                     Process & Check Duplicates
                 </button>
-                <button id="exportBtn" disabled class="flex-1 bg-slate-800 text-slate-500 font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm text-sm cursor-not-allowed">
-                    Export to Sheet / Sync
+                <button id="importBtn" disabled class="flex-1 bg-slate-800 text-slate-500 font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm text-sm cursor-not-allowed">
+                    Import to Sheet
                 </button>
             </div>
         </main>
@@ -173,9 +174,9 @@
         let parsedData = [];
         let csvKeys = [];
         let processed = false;
-        const EXPORT_SOURCE_TAG = "Ookla Speedtest CSV Exporter";
+        const IMPORT_SOURCE_TAG = "Ookla Speedtest CSV Importer";
 
-        // ---- Google Sheet sync settings ----
+        // ---- Google Sheet import settings ----
         // Deployed Apps Script Web App URL (ends with /exec):
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtMH8vRjM_QlDgQ2ainbExqm5QPZ4ChqxnKDA96czagUCwGcY_xH52uNyqjKAdSfhGvQ/exec";
         const SCRIPT_TOKEN = "CSP3_OOKLA_IMPORTER";
@@ -184,7 +185,7 @@
         const csvFile = document.getElementById('csvFile');
         const statusBox = document.getElementById('duplicateStatus');
         const resultsSection = document.getElementById('resultsSection');
-        const exportBtn = document.getElementById('exportBtn');
+        const importBtn = document.getElementById('importBtn');
         const nameInput = document.getElementById('importerName');
         const nameError = document.getElementById('nameError');
         const getName = () => nameInput.value.trim();
@@ -244,26 +245,26 @@
                 || keys.find(k => norm(k).includes('connection'));
         }
 
-        function setExportState(validCount) {
+        function setImportState(validCount) {
             if (validCount > 0) {
-                exportBtn.disabled = false;
-                exportBtn.textContent = `Export ${validCount} Valid Row${validCount === 1 ? '' : 's'} to Sheet / Sync`;
-                exportBtn.classList.remove('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
-                exportBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'cursor-pointer');
+                importBtn.disabled = false;
+                importBtn.textContent = `Import ${validCount} Valid Row${validCount === 1 ? '' : 's'} to Sheet`;
+                importBtn.classList.remove('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
+                importBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'cursor-pointer');
             } else {
-                exportBtn.disabled = true;
-                exportBtn.textContent = 'Export to Sheet / Sync';
-                exportBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'cursor-pointer');
-                exportBtn.classList.add('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
+                importBtn.disabled = true;
+                importBtn.textContent = 'Import to Sheet';
+                importBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'cursor-pointer');
+                importBtn.classList.add('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
             }
         }
 
-        // Keep the Name/Mobile/Team columns and export state in sync with the three fields
+        // Keep the Name/Mobile/Team columns and import state in sync with the three fields
         function onIdentityInput() {
             [nameError, teamError, phoneError].forEach(el => el.classList.add('hidden'));
             [nameInput, teamInput, phoneInput].forEach(el => el.classList.remove('border-rose-500'));
             if (parsedData.length) renderTable();
-            if (processed) setExportState(identityValid() ? parsedData.filter(r => r._valid).length : 0);
+            if (processed) setImportState(identityValid() ? parsedData.filter(r => r._valid).length : 0);
         }
         ['input', 'change'].forEach(ev => [nameInput, teamInput, phoneInput].forEach(el => el.addEventListener(ev, onIdentityInput)));
 
@@ -295,15 +296,29 @@
         }
 
         async function loadLists() {
+            const retryBtn = document.getElementById('retryListsBtn');
+            retryBtn.classList.add('hidden');
             listsNote.textContent = 'Loading name and team lists...';
             try {
-                const res = await fetch(SCRIPT_URL + '?action=lists&token=' + encodeURIComponent(SCRIPT_TOKEN));
-                const data = await res.json();
-                if (data.status !== 'success') throw new Error(data.message || data.status || 'Could not load the lists');
+                let res, data;
+                try {
+                    res = await fetch(SCRIPT_URL + '?action=lists&token=' + encodeURIComponent(SCRIPT_TOKEN));
+                } catch (e) {
+                    throw new Error('could not connect to the web app: check your connection, the web app URL, and that access is set to Anyone');
+                }
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    throw new Error('the web app did not return list data: deploy the latest script version, or check the web app URL (HTTP ' + res.status + ')');
+                }
+                if (data.status === 'unauthorized') throw new Error('the security token in this page does not match the script');
+                if (data.status !== 'success') throw new Error(data.message || data.status || 'unknown error');
                 const lists = { names: data.names || [], teams: data.teams || [] };
                 applyLists(lists, (lists.names.length && lists.teams.length) ? '' : 'The name or team list is empty. Ask the admin to fill in the List tab of the sheet.');
                 try { localStorage.setItem(LISTS_CACHE_KEY, JSON.stringify(lists)); } catch (e) { /* storage unavailable */ }
             } catch (err) {
+                console.warn('Lists load failed:', err);
+                retryBtn.classList.remove('hidden');
                 let cached = null;
                 try { cached = JSON.parse(localStorage.getItem(LISTS_CACHE_KEY) || 'null'); } catch (e) { /* ignore */ }
                 if (cached && cached.names && cached.teams) {
@@ -315,6 +330,7 @@
                 }
             }
         }
+        document.getElementById('retryListsBtn').addEventListener('click', loadLists);
         loadLists();
 
         function resetLoaded() {
@@ -323,7 +339,7 @@
             processed = false;
             statusBox.classList.add('hidden');
             resultsSection.classList.add('hidden');
-            setExportState(0);
+            setImportState(0);
         }
 
         function ingestParsed(results) {
@@ -396,7 +412,7 @@
 
             // Rows are checked in file order: the FIRST instance of a Test ID is kept, later ones are duplicates
             parsedData.forEach(row => {
-                row._source = EXPORT_SOURCE_TAG;
+                row._source = IMPORT_SOURCE_TAG;
                 row._testId = extractTestId(row[urlKey]);
                 row._reasons = [];
 
@@ -423,7 +439,7 @@
             const invalidCount = parsedData.length - validCount;
 
             statusBox.classList.remove('hidden', 'bg-emerald-950/80', 'border-emerald-800', 'text-emerald-300', 'bg-amber-950/80', 'border-amber-800', 'text-amber-300');
-            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}). Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${EXPORT_SOURCE_TAG}</em>.`;
+            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}). Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
             const warn = connKey ? '' : ' <br><strong>Note:</strong> no connection type column was found, so WiFi tests could not be checked.';
             if (invalidCount > 0 || !connKey) {
                 statusBox.classList.add('bg-amber-950/80', 'border-amber-800', 'text-amber-300');
@@ -434,11 +450,11 @@
             }
 
             renderTable();
-            setExportState(validCount);
+            setImportState(validCount);
         });
 
-        // ---- Export valid rows to the Google Sheet (Apps Script web app) ----
-        function mapExportColumns(keys, rows) {
+        // ---- Import valid rows into the Google Sheet (Apps Script web app) ----
+        function mapImportColumns(keys, rows) {
             const find = (...tests) => {
                 for (const t of tests) {
                     const k = keys.find(key => t.test(norm(key)));
@@ -509,26 +525,26 @@
             statusBox.innerHTML = html;
         }
 
-        exportBtn.addEventListener('click', async () => {
-            if (exportBtn.disabled) return;
+        importBtn.addEventListener('click', async () => {
+            if (importBtn.disabled) return;
 
             if (!identityOk()) return;
             const name = getName();
             const phone = getPhone();
             const team = getTeam();
             if (!SCRIPT_URL) {
-                showSyncStatus('err', '<strong>Export not configured:</strong> the Google Sheet web app URL (<code>SCRIPT_URL</code>) has not been set in this file yet.');
+                showSyncStatus('err', '<strong>Import not configured:</strong> the Google Sheet web app URL (<code>SCRIPT_URL</code>) has not been set in this file yet.');
                 return;
             }
 
-            const m = mapExportColumns(csvKeys, parsedData);
+            const m = mapImportColumns(csvKeys, parsedData);
             const missing = [];
             if (!m.dt && !m.dateK) missing.push('date/time');
             if (!m.conn) missing.push('connection type');
             if (!m.dl) missing.push('download');
             if (!m.ul) missing.push('upload');
             if (missing.length) {
-                showSyncStatus('err', `<strong>Export stopped:</strong> could not find these column(s) in the CSV: <strong>${missing.join(', ')}</strong>. Nothing was sent.`);
+                showSyncStatus('err', `<strong>Import stopped:</strong> could not find these column(s) in the CSV: <strong>${missing.join(', ')}</strong>. Nothing was sent.`);
                 return;
             }
 
@@ -544,30 +560,69 @@
                 lon: m.lon ? roundNum(r[m.lon], 3) : '',
                 phone: phone,
                 team: team,
-                entrySource: EXPORT_SOURCE_TAG
+                entrySource: IMPORT_SOURCE_TAG
             }));
 
-            exportBtn.disabled = true;
-            exportBtn.textContent = `Sending ${rows.length} row${rows.length === 1 ? '' : 's'}...`;
+            importBtn.disabled = true;
+            importBtn.textContent = `Sending ${rows.length} row${rows.length === 1 ? '' : 's'}...`;
             try {
-                // text/plain avoids a CORS preflight, which Apps Script web apps do not answer
+                const { data, rechecked } = await sendWithRecheck(rows, () => {
+                    importBtn.textContent = 'Confirming with the sheet...';
+                });
+                if (data.status === 'success') {
+                    const rej = data.rejected ? ` <strong>${data.rejected}</strong> rejected by the sheet (${esc((data.rejectedDetails || []).join('; '))}).` : '';
+                    const fmt = (data.formatWarnings && data.formatWarnings.length) ? ` The rows were saved, but number formatting reported: ${esc(data.formatWarnings.join('; '))}.` : '';
+                    const main = rechecked
+                        ? `<strong>Import confirmed:</strong> the first reply from the sheet did not arrive, so the rows were checked again. All <strong>${rows.length - (data.rejected || 0)}</strong> valid row(s) are now in the sheet (${data.added} added during the check, ${data.skipped} had already been saved).`
+                        : `<strong>Import complete:</strong> <strong>${data.added}</strong> row(s) added to the sheet, <strong>${data.skipped}</strong> skipped (Test ID already in the sheet).`;
+                    showSyncStatus((data.rejected || fmt) ? 'warn' : 'ok', main + rej + fmt);
+                } else {
+                    showSyncStatus('err', `<strong>Import failed:</strong> ${esc(data.message || data.status || 'Unknown response from the sheet.')}`);
+                }
+            } catch (err) {
+                showSyncStatus('err', `<strong>Import could not be confirmed:</strong> ${esc(err.message)}. Some rows may already be in the sheet. Processing and importing the same file again is safe, because rows already saved are skipped.`);
+            }
+            setImportState(parsedData.filter(r => r._valid).length);
+        });
+
+        // One POST to the Apps Script. text/plain avoids a CORS preflight, which Apps Script web apps do not answer.
+        async function sendRows(rows) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 90000);
+            try {
                 const res = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ token: SCRIPT_TOKEN, rows: rows })
+                    body: JSON.stringify({ token: SCRIPT_TOKEN, rows: rows }),
+                    signal: ctrl.signal
                 });
-                const data = await res.json();
-                if (data.status === 'success') {
-                    const rej = data.rejected ? ` <strong>${data.rejected}</strong> rejected by the sheet (${esc((data.rejectedDetails || []).join('; '))}).` : '';
-                    showSyncStatus(data.rejected ? 'warn' : 'ok', `<strong>Export complete:</strong> <strong>${data.added}</strong> row(s) added to the sheet, <strong>${data.skipped}</strong> skipped (Test ID already in the sheet).${rej}`);
-                } else {
-                    showSyncStatus('err', `<strong>Export failed:</strong> ${esc(data.message || data.status || 'Unknown response from the sheet.')}`);
-                }
-            } catch (err) {
-                showSyncStatus('err', `<strong>Export failed:</strong> could not reach the Google Sheet (${esc(err.message)}). Check the web app URL, that it is deployed for "Anyone", and your connection.`);
+                return await res.json();
+            } finally {
+                clearTimeout(timer);
             }
-            setExportState(parsedData.filter(r => r._valid).length);
-        });
+        }
+
+        // The sheet may save the rows even when its reply is lost or reports an error afterwards.
+        // Re-sending is safe (the sheet skips Test IDs it already has), so on anything other than a
+        // clear success or a token error, ask once more and report what the sheet really holds.
+        async function sendWithRecheck(rows, onRecheck) {
+            let first;
+            try { first = { data: await sendRows(rows) }; } catch (e) { first = { error: e }; }
+            if (first.data && (first.data.status === 'success' || first.data.status === 'unauthorized')) {
+                return { data: first.data, rechecked: false };
+            }
+            onRecheck();
+            try {
+                const second = await sendRows(rows);
+                if (second.status === 'success') return { data: second, rechecked: true };
+            } catch (e) { /* fall through to the first failure */ }
+            if (first.error) {
+                throw new Error(first.error.name === 'AbortError'
+                    ? 'the sheet took too long to answer'
+                    : 'no valid reply from the sheet (' + first.error.message + ')');
+            }
+            return { data: first.data, rechecked: false };
+        }
 
         function renderTable() {
             const headerRow = document.getElementById('tableHeaderRow');
