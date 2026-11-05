@@ -234,6 +234,20 @@
             return m ? m[0] : '';
         }
 
+        // Cleans "dirty" characters out of a date/time value. Ookla puts a NARROW NO-BREAK SPACE (U+202F)
+        // before AM/PM; other exports can add NBSP, zero-width characters, a BOM, or broken-encoding
+        // junk (for example "â€¯"). Everything is reduced to plain date/time characters, and AM/PM is
+        // always separated from the time by one normal space.
+        function cleanDateText(v) {
+            return String(v == null ? '' : v)
+                .replace(/[\u200B-\u200D\u2060\uFEFF\u00AD]/g, '')                                   // zero-width, BOM, soft hyphen
+                .replace(/[\u0000-\u001F\u007F-\u009F\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, ' ') // control and exotic spaces -> space
+                .replace(/[^0-9A-Za-z\/:,.+\- ]/g, '')                                               // drop anything else (symbols, mojibake)
+                .replace(/\s+/g, ' ')
+                .trim()
+                .replace(/(\d)\s*([ap]m)\b/i, (m, d, ap) => d + ' ' + ap.toUpperCase());              // "7:21AM" / "7:21 AM" -> "7:21 AM"
+        }
+
         function findUrlKey(keys, rows) {
             return keys.find(k => norm(k) === 'resulturl')
                 || keys.find(k => norm(k).includes('url'))
@@ -407,14 +421,28 @@
                 return;
             }
 
+            const dm = mapImportColumns(csvKeys, parsedData);
+            const hasDateCol = !!(dm.dt || dm.dateK);
             const seen = new Set();
-            let dupCount = 0, wifiCount = 0, noIdCount = 0, validCount = 0;
+            let dupCount = 0, wifiCount = 0, noIdCount = 0, noDateCount = 0, dateFixedCount = 0, validCount = 0;
 
             // Rows are checked in file order: the FIRST instance of a Test ID is kept, later ones are duplicates
             parsedData.forEach(row => {
                 row._source = IMPORT_SOURCE_TAG;
                 row._testId = extractTestId(row[urlKey]);
                 row._reasons = [];
+
+                // Date text cleanup (what gets imported is the cleaned value)
+                row._dateRaw = hasDateCol
+                    ? (dm.dt ? row[dm.dt] : [row[dm.dateK], dm.timeK ? row[dm.timeK] : ''].join(' ').trim())
+                    : '';
+                row._dateClean = cleanDateText(row._dateRaw);
+                row._dateFixed = hasDateCol && String(row._dateRaw).trim() !== row._dateClean;
+                if (row._dateFixed) dateFixedCount++;
+                if (hasDateCol && !row._dateClean) {
+                    row._reasons.push('No Date');
+                    noDateCount++;
+                }
 
                 if (!row._testId) {
                     row._reasons.push('No Test ID');
@@ -438,8 +466,8 @@
             processed = true;
             const invalidCount = parsedData.length - validCount;
 
-            statusBox.classList.remove('hidden', 'bg-emerald-950/80', 'border-emerald-800', 'text-emerald-300', 'bg-amber-950/80', 'border-amber-800', 'text-amber-300');
-            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}). Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
+            statusBox.classList.remove('hidden', 'bg-emerald-950/80', 'border-emerald-800', 'text-emerald-300', 'bg-amber-950/80', 'border-amber-800', 'text-amber-300', 'bg-rose-950/80', 'border-rose-800', 'text-rose-300');
+            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}${noDateCount ? `, ${noDateCount} missing date` : ''}). ${dateFixedCount ? `Cleaned stray characters in the date of <strong>${dateFixedCount}</strong> row(s). ` : ''}Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
             const warn = connKey ? '' : ' <br><strong>Note:</strong> no connection type column was found, so WiFi tests could not be checked.';
             if (invalidCount > 0 || !connKey) {
                 statusBox.classList.add('bg-amber-950/80', 'border-amber-800', 'text-amber-300');
@@ -551,7 +579,7 @@
             const validRows = parsedData.filter(r => r._valid);
             const rows = validRows.map(r => ({
                 name: name,
-                dateTime: toPHT(m.dt ? r[m.dt] : [r[m.dateK], m.timeK ? r[m.timeK] : ''].join(' ').trim()),
+                dateTime: toPHT(r._dateClean),
                 techBand: techBandOf(r[m.conn]),
                 testId: r._testId,
                 dl: toMbps(r[m.dl], m.dl),
@@ -633,7 +661,7 @@
             document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : 'CSV Preview';
 
             const lead = processed
-                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
+                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Date (clean)</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
                 : `<th class="${th}">#</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th>`;
             headerRow.innerHTML = lead + csvKeys.map(k => `<th class="${th}">${esc(k)}</th>`).join('');
 
@@ -662,7 +690,7 @@
                 const reasons = row._reasons.length
                     ? row._reasons.map(r => `<span class="px-2 py-0.5 text-xs bg-amber-900/80 text-amber-300 border border-amber-700/60 rounded mr-1">${esc(r)}</span>`).join('')
                     : '<span class="text-slate-600">-</span>';
-                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
+                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-xs">${esc(row._dateClean)}${row._dateFixed ? ' <span class="text-[10px] text-sky-400 border border-sky-800 rounded px-1">cleaned</span>' : ''}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
             }).join('');
 
             const shown = Math.min(parsedData.length, PREVIEW_ROW_LIMIT);
