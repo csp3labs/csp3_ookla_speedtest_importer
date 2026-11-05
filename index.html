@@ -248,6 +248,35 @@
                 .replace(/(\d)\s*([ap]m)\b/i, (m, d, ap) => d + ' ' + ap.toUpperCase());              // "7:21AM" / "7:21 AM" -> "7:21 AM"
         }
 
+        // Converts cleaned date text into the sheet's format MM/DD/YYYY HH:mm:ss (24-hour), for example
+        // "11/05/2026, 7:21 PM" -> "11/05/2026 19:21:00". Understands Ookla's MM/DD/YYYY with AM/PM,
+        // 24-hour US dates, and ISO dates (a Z/UTC-offset is converted to PHT). Returns '' when the text
+        // is not a real date in one of those formats.
+        function formatSheetDate(clean) {
+            let s = String(clean || '').trim();
+            if (!s) return '';
+            const pad = n => String(n).padStart(2, '0');
+            let y, mo, d, hr, mi, sec = 0, m;
+            if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)?$/i))) {
+                mo = +m[1]; d = +m[2]; y = +m[3]; hr = +m[4]; mi = +m[5]; sec = m[6] ? +m[6] : 0;
+                if (m[7]) {
+                    if (hr < 1 || hr > 12) return '';
+                    hr = (hr % 12) + (m[7].toUpperCase() === 'PM' ? 12 : 0);
+                }
+            } else {
+                if (/(Z|[+-]\d{2}:?\d{2})$/i.test(s)) s = toPHT(s);   // timezone given: convert to PHT first
+                if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/))) {
+                    y = +m[1]; mo = +m[2]; d = +m[3]; hr = +m[4]; mi = +m[5]; sec = m[6] ? +m[6] : 0;
+                } else {
+                    return '';
+                }
+            }
+            if (mo < 1 || mo > 12 || d < 1 || d > 31 || hr > 23 || mi > 59 || sec > 59) return '';
+            const t = new Date(Date.UTC(y, mo - 1, d));
+            if (t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return '';   // e.g. 02/30
+            return pad(mo) + '/' + pad(d) + '/' + y + ' ' + pad(hr) + ':' + pad(mi) + ':' + pad(sec);
+        }
+
         function findUrlKey(keys, rows) {
             return keys.find(k => norm(k) === 'resulturl')
                 || keys.find(k => norm(k).includes('url'))
@@ -424,7 +453,7 @@
             const dm = mapImportColumns(csvKeys, parsedData);
             const hasDateCol = !!(dm.dt || dm.dateK);
             const seen = new Set();
-            let dupCount = 0, wifiCount = 0, noIdCount = 0, noDateCount = 0, dateFixedCount = 0, validCount = 0;
+            let dupCount = 0, wifiCount = 0, noIdCount = 0, noDateCount = 0, badDateCount = 0, dateFixedCount = 0, validCount = 0;
 
             // Rows are checked in file order: the FIRST instance of a Test ID is kept, later ones are duplicates
             parsedData.forEach(row => {
@@ -439,9 +468,13 @@
                 row._dateClean = cleanDateText(row._dateRaw);
                 row._dateFixed = hasDateCol && String(row._dateRaw).trim() !== row._dateClean;
                 if (row._dateFixed) dateFixedCount++;
+                row._dateSheet = formatSheetDate(row._dateClean);   // MM/DD/YYYY HH:mm:ss, as used in the sheet
                 if (hasDateCol && !row._dateClean) {
                     row._reasons.push('No Date');
                     noDateCount++;
+                } else if (hasDateCol && !row._dateSheet) {
+                    row._reasons.push('Bad Date');
+                    badDateCount++;
                 }
 
                 if (!row._testId) {
@@ -467,7 +500,7 @@
             const invalidCount = parsedData.length - validCount;
 
             statusBox.classList.remove('hidden', 'bg-emerald-950/80', 'border-emerald-800', 'text-emerald-300', 'bg-amber-950/80', 'border-amber-800', 'text-amber-300', 'bg-rose-950/80', 'border-rose-800', 'text-rose-300');
-            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}${noDateCount ? `, ${noDateCount} missing date` : ''}). ${dateFixedCount ? `Cleaned stray characters in the date of <strong>${dateFixedCount}</strong> row(s). ` : ''}Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
+            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}${noDateCount ? `, ${noDateCount} missing date` : ''}${badDateCount ? `, ${badDateCount} unrecognized date format` : ''}). ${dateFixedCount ? `Dates are converted to MM/DD/YYYY HH:mm:ss for the sheet; stray characters were cleaned in <strong>${dateFixedCount}</strong> row(s). ` : ''}Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
             const warn = connKey ? '' : ' <br><strong>Note:</strong> no connection type column was found, so WiFi tests could not be checked.';
             if (invalidCount > 0 || !connKey) {
                 statusBox.classList.add('bg-amber-950/80', 'border-amber-800', 'text-amber-300');
@@ -579,7 +612,7 @@
             const validRows = parsedData.filter(r => r._valid);
             const rows = validRows.map(r => ({
                 name: name,
-                dateTime: toPHT(r._dateClean),
+                dateTime: r._dateSheet,
                 techBand: techBandOf(r[m.conn]),
                 testId: r._testId,
                 dl: toMbps(r[m.dl], m.dl),
@@ -661,7 +694,7 @@
             document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : 'CSV Preview';
 
             const lead = processed
-                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Date (clean)</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
+                ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Date (to import)</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
                 : `<th class="${th}">#</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th>`;
             headerRow.innerHTML = lead + csvKeys.map(k => `<th class="${th}">${esc(k)}</th>`).join('');
 
@@ -690,7 +723,7 @@
                 const reasons = row._reasons.length
                     ? row._reasons.map(r => `<span class="px-2 py-0.5 text-xs bg-amber-900/80 text-amber-300 border border-amber-700/60 rounded mr-1">${esc(r)}</span>`).join('')
                     : '<span class="text-slate-600">-</span>';
-                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-xs">${esc(row._dateClean)}${row._dateFixed ? ' <span class="text-[10px] text-sky-400 border border-sky-800 rounded px-1">cleaned</span>' : ''}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
+                return `<tr class="hover:bg-slate-800/40 ${row._valid ? '' : 'bg-rose-950/20'}"><td class="${td}">${status}</td><td class="${td}">${reasons}</td><td class="${td} font-mono text-xs">${esc(row._testId)}</td><td class="${td} text-xs">${esc(row._dateSheet || row._dateClean)}${row._dateFixed ? ' <span class="text-[10px] text-sky-400 border border-sky-800 rounded px-1">cleaned</span>' : ''}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td><td class="${td} text-xs text-sky-400 font-mono">${esc(row._source)}</td>${cells}</tr>`;
             }).join('');
 
             const shown = Math.min(parsedData.length, PREVIEW_ROW_LIMIT);
