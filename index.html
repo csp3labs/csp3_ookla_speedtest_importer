@@ -104,14 +104,18 @@
             
             <!-- Engineer Name + Team Assignment (dropdowns) + Mobile Phone Number: all mandatory -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label for="importerName" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Engineer Name <span class="text-rose-400">*</span></label>
-                    <select id="importerName" required disabled style="color-scheme: dark;" class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"><option value="">Loading names...</option></select>
+                <div class="relative">
+                    <label for="importerNameSearch" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Engineer Name <span class="text-rose-400">*</span></label>
+                    <input type="text" id="importerNameSearch" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="importerNameList" autocomplete="off" autocapitalize="off" spellcheck="false" disabled placeholder="Loading..." class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder-slate-500 disabled:opacity-60">
+                    <ul id="importerNameList" role="listbox" class="hidden absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl text-sm"></ul>
+                    <select id="importerName" class="hidden" tabindex="-1" aria-hidden="true" disabled><option value="">Loading names...</option></select>
                     <p id="nameError" class="hidden text-xs text-rose-400 mt-1.5">Select your name from the list.</p>
                 </div>
-                <div>
-                    <label for="teamAssignment" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Team Assignment <span class="text-rose-400">*</span></label>
-                    <select id="teamAssignment" required disabled style="color-scheme: dark;" class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"><option value="">Loading teams...</option></select>
+                <div class="relative">
+                    <label for="teamAssignmentSearch" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Team Assignment <span class="text-rose-400">*</span></label>
+                    <input type="text" id="teamAssignmentSearch" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="teamAssignmentList" autocomplete="off" autocapitalize="off" spellcheck="false" disabled placeholder="Loading..." class="w-full text-sm text-slate-100 bg-slate-950/80 border border-slate-800/80 rounded-lg px-3 py-2.5 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 placeholder-slate-500 disabled:opacity-60">
+                    <ul id="teamAssignmentList" role="listbox" class="hidden absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-700 bg-slate-900 shadow-xl text-sm"></ul>
+                    <select id="teamAssignment" class="hidden" tabindex="-1" aria-hidden="true" disabled><option value="">Loading teams...</option></select>
                     <p id="teamError" class="hidden text-xs text-rose-400 mt-1.5">Select your team from the list.</p>
                 </div>
                 <div class="sm:col-span-2">
@@ -200,18 +204,22 @@
         const phoneValid = () => /^0\d{10}$/.test(getPhone());
         const identityValid = () => !!getName() && !!getTeam() && phoneValid();
 
+        // The visible search boxes (the hidden <select>s above hold the chosen values)
+        const nameBox = document.getElementById('importerNameSearch');
+        const teamBox = document.getElementById('teamAssignmentSearch');
+
         // Engineer name, team and mobile number are all mandatory; show errors and focus the first bad field
         function identityOk() {
             let first = null;
             if (!getName()) {
                 nameError.classList.remove('hidden');
-                nameInput.classList.add('border-rose-500');
-                first = first || nameInput;
+                nameBox.classList.add('border-rose-500');
+                first = first || nameBox;
             }
             if (!getTeam()) {
                 teamError.classList.remove('hidden');
-                teamInput.classList.add('border-rose-500');
-                first = first || teamInput;
+                teamBox.classList.add('border-rose-500');
+                first = first || teamBox;
             }
             if (!phoneValid()) {
                 phoneError.classList.remove('hidden');
@@ -305,7 +313,7 @@
         // Keep the Name/Mobile/Team columns and import state in sync with the three fields
         function onIdentityInput() {
             [nameError, teamError, phoneError].forEach(el => el.classList.add('hidden'));
-            [nameInput, teamInput, phoneInput].forEach(el => el.classList.remove('border-rose-500'));
+            [nameBox, teamBox, phoneInput].forEach(el => el.classList.remove('border-rose-500'));
             if (parsedData.length) renderTable();
             if (processed) setImportState(identityValid() ? parsedData.filter(r => r._valid).length : 0);
         }
@@ -313,6 +321,119 @@
 
         // ---- Name and team dropdown lists (read from the "List" tab of the sheet via the Apps Script) ----
         const LISTS_CACHE_KEY = 'csp3_ookla_lists_v1';
+
+        // ---- Searchable dropdowns: type to filter, tap or press Enter to choose. The value always comes from the list. ----
+        const combos = new Map();
+
+        function setupCombo(select, input, list, noun) {
+            let items = [];      // every allowed value
+            let shown = [];      // values matching what was typed
+            let active = -1;     // highlighted row
+            let filterText = ''; // lower-case text typed since the list was opened
+
+            function sync() { input.value = select.value || ''; }
+
+            function fireChange() { select.dispatchEvent(new Event('change', { bubbles: true })); }
+
+            function setActive(i) {
+                active = i;
+                Array.from(list.children).forEach((li, idx) => {
+                    li.classList.toggle('bg-slate-800', idx === i);
+                    if (idx === i) li.scrollIntoView({ block: 'nearest' });
+                });
+            }
+
+            function render() {
+                shown = filterText ? items.filter(v => v.toLowerCase().includes(filterText)) : items.slice();
+                list.innerHTML = '';
+                if (!shown.length) {
+                    const li = document.createElement('li');
+                    li.className = 'px-3 py-2 text-slate-500';
+                    li.textContent = 'No matches';
+                    list.appendChild(li);
+                    active = -1;
+                    return;
+                }
+                shown.forEach(v => {
+                    const li = document.createElement('li');
+                    li.setAttribute('role', 'option');
+                    li.className = 'px-3 py-2 cursor-pointer hover:bg-slate-800 ' + (v === select.value ? 'text-sky-300' : 'text-slate-100');
+                    li.textContent = v;
+                    li.addEventListener('mousedown', e => e.preventDefault());   // keep focus in the box
+                    li.addEventListener('click', () => choose(v));
+                    list.appendChild(li);
+                });
+                setActive(filterText ? 0 : shown.indexOf(select.value));
+            }
+
+            function open() {
+                if (input.disabled) return;
+                list.classList.remove('hidden');
+                input.setAttribute('aria-expanded', 'true');
+                render();
+            }
+
+            function close() {
+                list.classList.add('hidden');
+                input.setAttribute('aria-expanded', 'false');
+            }
+
+            function choose(v) {
+                const changed = select.value !== v;
+                select.value = v;
+                sync();
+                close();
+                if (changed) fireChange();
+            }
+
+            // When the box loses focus: accept an exact (case-insensitive) match, clear if emptied, otherwise put the old value back
+            function commit() {
+                const t = input.value.trim().toLowerCase();
+                const hit = items.find(v => v.toLowerCase() === t);
+                if (hit && select.value !== hit) { select.value = hit; fireChange(); }
+                else if (!t && select.value) { select.value = ''; fireChange(); }
+                sync();
+                close();
+            }
+
+            input.addEventListener('focus', () => { filterText = ''; open(); input.select(); });
+            input.addEventListener('click', () => { if (list.classList.contains('hidden')) { filterText = ''; open(); } });
+            input.addEventListener('input', () => { filterText = input.value.trim().toLowerCase(); open(); });
+            input.addEventListener('blur', () => setTimeout(commit, 150));
+            input.addEventListener('keydown', e => {
+                const isOpen = !list.classList.contains('hidden');
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!isOpen) { filterText = ''; open(); } else if (shown.length) setActive((active + 1) % shown.length);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (isOpen && shown.length) setActive((active - 1 + shown.length) % shown.length);
+                } else if (e.key === 'Enter') {
+                    if (isOpen && active >= 0 && shown[active] !== undefined) { e.preventDefault(); choose(shown[active]); }
+                } else if (e.key === 'Escape') {
+                    sync();
+                    close();
+                }
+            });
+
+            // Re-read the allowed values from the hidden <select> (called after the lists load)
+            function refresh() {
+                items = Array.from(select.options).filter(o => o.value).map(o => o.value);
+                input.disabled = select.disabled;
+                input.placeholder = select.disabled
+                    ? (select.options[0] ? select.options[0].textContent : '')
+                    : 'Type to search or tap to choose your ' + noun;
+                sync();
+            }
+
+            const api = { refresh, sync };
+            combos.set(select, api);
+            refresh();
+            return api;
+        }
+
+        setupCombo(nameInput, nameBox, document.getElementById('importerNameList'), 'name');
+        setupCombo(teamInput, teamBox, document.getElementById('teamAssignmentList'), 'team');
 
         function fillSelect(sel, items, placeholder) {
             sel.innerHTML = '';
@@ -327,6 +448,7 @@
                 sel.appendChild(o);
             });
             sel.disabled = items.length === 0;
+            if (combos.get(sel)) combos.get(sel).refresh();
         }
 
         function applyLists(lists, note) {
@@ -335,6 +457,8 @@
             fillSelect(teamInput, lists.teams, 'Select your team');
             if (lists.names.includes(prevName)) nameInput.value = prevName;
             if (lists.teams.includes(prevTeam)) teamInput.value = prevTeam;
+            combos.get(nameInput).sync();
+            combos.get(teamInput).sync();
             listsNote.textContent = note || '';
         }
 
