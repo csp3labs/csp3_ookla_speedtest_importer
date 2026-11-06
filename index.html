@@ -23,6 +23,8 @@
     </script>
     <!-- PapaParse for CSV processing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Tesseract.js (OCR) for the screenshot import mode -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
     <style>
         /* Page base */
         body.custom-bg {
@@ -57,7 +59,7 @@
         <header class="mb-8 border-b border-slate-800/80 pb-6 flex items-center justify-between">
             <div>
                 <h1 class="text-3xl font-extrabold text-slate-100 tracking-tight">CSP3 Ookla Results Importer</h1>
-                <p class="text-sm text-slate-400 mt-1">Check your Ookla results.csv for duplicates and WiFi tests, then import the valid LTE/NR records into the shared sheet.</p>
+                <p class="text-sm text-slate-400 mt-1">Import your Ookla results from a results.csv file or from result screenshots. Duplicates and WiFi tests are checked, then the valid LTE/NR records go into the shared sheet.</p>
             </div>
             <!-- Top Right Logo -->
             <div class="flex-shrink-0">
@@ -74,7 +76,7 @@
             <div>
                 <span class="inline-block text-[10px] font-bold uppercase tracking-widest text-sky-300 bg-sky-900/80 border border-sky-700/60 rounded px-2 py-0.5 mb-2">Recommended</span>
                 <h2 class="text-base font-semibold text-slate-100">Submit your test entries via the Google Form</h2>
-                <p class="text-sm text-slate-300 mt-0.5">The quickest way to log results without handling any files. Use the CSV importer below only if you have a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> to import.</p>
+                <p class="text-sm text-slate-300 mt-0.5">The quickest way to log results without handling any files. Use the importer below only if you have a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> or Ookla result screenshots to import.</p>
             </div>
             <a href="https://docs.google.com/forms/d/e/1FAIpQLSeVTc39CrQcuwhq1EaiYe7Iur9F-XgKIz39D89HPSMP98jV3Q/viewform" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 inline-flex items-center gap-2 text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white px-5 py-2.5 rounded-lg transition-colors shadow-sm">
                 Open Google Form Manual Entry
@@ -93,9 +95,10 @@
                 <li>Navigate to your test <strong>History</strong> tab.</li>
                 <li>Tap the export or share option to generate/save your test logs as a <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> file.</li>
                 <li>Save or upload your exported <code class="bg-slate-950 px-1.5 py-0.5 rounded text-sky-300 border border-slate-800 font-mono">results.csv</code> directly to <strong>Google Drive</strong> or <strong>OneDrive (Onebox)</strong> for easy retrieval.</li>
-                <li>Source tagging will be set to <strong class="text-sky-300">Ookla Speedtest CSV Importer</strong> for items imported via this tool.</li>
+                <li>Source tagging is <strong class="text-sky-300">Ookla Speedtest CSV Importer</strong> for rows imported from a results.csv, and <strong class="text-sky-300">Parsed Screenshot</strong> for rows read from screenshots.</li>
                 <li>Only <strong class="text-slate-200">1 unique test ID</strong> is recorded in the Google Sheet. Duplicates will be dropped.</li>
                 <li>Importer only considers <strong class="text-slate-200">LTE</strong> and <strong class="text-slate-200">NR</strong> test results. <strong class="text-slate-200">WIFI</strong> tests are excluded on the import.</li>
+                <li><strong class="text-slate-200">Screenshot import:</strong> use full, uncropped Ookla result screenshots. Check the values the OCR read (cells can be edited, except the URL). A screenshot whose <strong class="text-slate-200">Test ID</strong> cannot be read is blocked: import that test from the results.csv or enter it through the Google Form.</li>
             </ol>
         </section>
 
@@ -127,6 +130,16 @@
             <p id="listsNote" class="text-xs text-amber-300 min-h-[1rem]"></p>
             <button id="retryListsBtn" type="button" class="hidden text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">Retry loading lists</button>
 
+            <!-- Import method: results.csv or screenshots (one at a time) -->
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Import Method</label>
+                <div role="tablist" class="grid grid-cols-2 gap-1 p-1 rounded-lg bg-slate-950/80 border border-slate-800/80">
+                    <button type="button" id="modeCsvBtn" role="tab" aria-selected="true" class="py-2 text-sm font-semibold rounded-md transition-colors bg-sky-600 text-white">Ookla Results CSV</button>
+                    <button type="button" id="modeShotBtn" role="tab" aria-selected="false" class="py-2 text-sm font-semibold rounded-md transition-colors text-slate-300 hover:bg-slate-800">Ookla Result Screenshot</button>
+                </div>
+            </div>
+
+            <div id="csvPanel">
             <!-- CSV File Selection -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Select results.csv File</label>
@@ -139,6 +152,24 @@
                         <button id="loadPasteBtn" type="button" class="text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg px-4 py-2 transition-colors">Load pasted CSV</button>
                     </div>
                 </details>
+            </div>
+            </div>
+            <!-- /csvPanel -->
+
+            <!-- Screenshot Selection -->
+            <div id="shotPanel" class="hidden">
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Select Ookla Result Screenshots</label>
+                <div id="shotDrop" class="border-2 border-dashed border-slate-700 hover:border-sky-500 rounded-lg p-6 text-center text-sm text-slate-300 bg-slate-950/80 cursor-pointer transition-colors">
+                    Tap to choose screenshots, or drop them here
+                    <div class="text-xs text-slate-500 mt-1">One row per screenshot. Images are read in your browser and never uploaded.</div>
+                    <input id="shotInput" type="file" accept="image/*" multiple hidden>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 mt-3">
+                    <progress id="shotProg" value="0" max="1" class="hidden w-40"></progress>
+                    <span id="shotStatus" class="text-xs text-slate-400">Idle</span>
+                    <button id="shotClearBtn" type="button" class="ml-auto text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 transition-colors">Clear screenshots</button>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">The OCR engine and English data load from a CDN on first use, so the first run needs internet. Yellow cells are empty or out of range.</p>
             </div>
 
             <!-- Duplicate Status Box -->
@@ -179,6 +210,10 @@
         let csvKeys = [];
         let processed = false;
         const IMPORT_SOURCE_TAG = "Ookla Speedtest CSV Importer";
+        const SHOT_SOURCE_TAG = "Parsed Screenshot";
+        let mode = 'csv';          // 'csv' or 'shot' (one import method at a time)
+        let ocrBusy = false;
+        const sourceTag = () => mode === 'shot' ? SHOT_SOURCE_TAG : IMPORT_SOURCE_TAG;
 
         // ---- Google Sheet import settings ----
         // Deployed Apps Script Web App URL (ends with /exec):
@@ -558,13 +593,24 @@
 
         document.getElementById('processBtn').addEventListener('click', () => {
             if (!identityOk()) return;
-            if (!csvFile.files.length && !parsedData.length) {
-                alert('Please select a results.csv file or paste the CSV text first.');
+            if (ocrBusy) {
+                alert('The screenshots are still being read. Please wait until they finish.');
                 return;
             }
-            if (!parsedData.length) {
-                alert('The CSV is still loading or has no rows. Please try again.');
-                return;
+            if (mode === 'shot') {
+                if (!parsedData.length) {
+                    alert('Please add your Ookla result screenshots first.');
+                    return;
+                }
+            } else {
+                if (!csvFile.files.length && !parsedData.length) {
+                    alert('Please select a results.csv file or paste the CSV text first.');
+                    return;
+                }
+                if (!parsedData.length) {
+                    alert('The CSV is still loading or has no rows. Please try again.');
+                    return;
+                }
             }
 
             const urlKey = findUrlKey(csvKeys, parsedData);
@@ -577,11 +623,12 @@
             const dm = mapImportColumns(csvKeys, parsedData);
             const hasDateCol = !!(dm.dt || dm.dateK);
             const seen = new Set();
+            let shotIssueCount = 0;
             let dupCount = 0, wifiCount = 0, noIdCount = 0, noDateCount = 0, badDateCount = 0, dateFixedCount = 0, validCount = 0;
 
             // Rows are checked in file order: the FIRST instance of a Test ID is kept, later ones are duplicates
             parsedData.forEach(row => {
-                row._source = IMPORT_SOURCE_TAG;
+                row._source = sourceTag();
                 row._testId = extractTestId(row[urlKey]);
                 row._reasons = [];
 
@@ -616,6 +663,16 @@
                     wifiCount++;
                 }
 
+                // Extra checks for values read by OCR
+                if (mode === 'shot') {
+                    const ct = String(row[connKey] || '').trim();
+                    if (!ct) { row._reasons.push('No ConnType'); shotIssueCount++; }
+                    else if (!/wi-?fi/i.test(ct) && !/^(4G|5G)$/i.test(ct)) { row._reasons.push('Not 4G/5G'); shotIssueCount++; }
+                    if (isNaN(parseFloat(row['Download Speed'])) || isNaN(parseFloat(row['Upload Speed']))) { row._reasons.push('No DL/UL'); shotIssueCount++; }
+                    const la = String(row['Lat'] || '').trim(), lo = String(row['Lon'] || '').trim();
+                    if ((la && (isNaN(+la) || Math.abs(+la) > 90)) || (lo && (isNaN(+lo) || Math.abs(+lo) > 180))) { row._reasons.push('Bad Lat/Lon'); shotIssueCount++; }
+                }
+
                 row._valid = row._reasons.length === 0;
                 if (row._valid) validCount++;
             });
@@ -624,8 +681,11 @@
             const invalidCount = parsedData.length - validCount;
 
             statusBox.classList.remove('hidden', 'bg-emerald-950/80', 'border-emerald-800', 'text-emerald-300', 'bg-amber-950/80', 'border-amber-800', 'text-amber-300', 'bg-rose-950/80', 'border-rose-800', 'text-rose-300');
-            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}${noDateCount ? `, ${noDateCount} missing date` : ''}${badDateCount ? `, ${badDateCount} unrecognized date format` : ''}). ${dateFixedCount ? `Dates are converted to MM/DD/YYYY HH:mm:ss for the sheet; stray characters were cleaned in <strong>${dateFixedCount}</strong> row(s). ` : ''}Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${IMPORT_SOURCE_TAG}</em>.`;
-            const warn = connKey ? '' : ' <br><strong>Note:</strong> no connection type column was found, so WiFi tests could not be checked.';
+            const summary = `<strong>${parsedData.length}</strong> rows checked: <strong>${validCount}</strong> valid, <strong>${invalidCount}</strong> invalid (${dupCount} duplicate, ${wifiCount} WiFi${noIdCount ? `, ${noIdCount} missing Test ID` : ''}${noDateCount ? `, ${noDateCount} missing date` : ''}${badDateCount ? `, ${badDateCount} unrecognized date format` : ''}). ${dateFixedCount ? `Dates are converted to MM/DD/YYYY HH:mm:ss for the sheet; stray characters were cleaned in <strong>${dateFixedCount}</strong> row(s). ` : ''}Test ID read from <em>${esc(urlKey)}</em>; first instance of each ID is kept. Name: <em>${esc(getName())}</em>. Source set to <em>${sourceTag()}</em>.`;
+            const shotHint = (mode === 'shot' && (noIdCount || shotIssueCount))
+                ? ' <br><strong>Screenshots:</strong> ' + (noIdCount ? `<strong>${noIdCount}</strong> screenshot(s) have no readable Test ID and are blocked. Import those tests through the results.csv or the Google Form. ` : '') + (shotIssueCount ? `<strong>${shotIssueCount}</strong> value problem(s) found: fix the highlighted cells or check the Reason column.` : '')
+                : '';
+            const warn = shotHint + (connKey ? '' : ' <br><strong>Note:</strong> no connection type column was found, so WiFi tests could not be checked.');
             if (invalidCount > 0 || !connKey) {
                 statusBox.classList.add('bg-amber-950/80', 'border-amber-800', 'text-amber-300');
                 statusBox.innerHTML = `<strong>Attention:</strong> ${summary}${warn}`;
@@ -745,7 +805,7 @@
                 lon: m.lon ? roundNum(r[m.lon], 3) : '',
                 phone: phone,
                 team: team,
-                entrySource: IMPORT_SOURCE_TAG
+                entrySource: sourceTag()
             }));
 
             importBtn.disabled = true;
@@ -815,7 +875,7 @@
             const th = 'px-4 py-3 whitespace-nowrap';
             const td = 'px-4 py-2.5 whitespace-nowrap max-w-xs truncate';
 
-            document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : 'CSV Preview';
+            document.getElementById('resultsTitle').textContent = processed ? 'Parsed Data & Validation' : (mode === 'shot' ? 'Screenshot Preview' : 'CSV Preview');
 
             const lead = processed
                 ? `<th class="${th}">Status</th><th class="${th}">Reason</th><th class="${th}">Test ID</th><th class="${th}">Date (to import)</th><th class="${th}">Name</th><th class="${th}">Mobile</th><th class="${th}">Team</th><th class="${th}">Source Tag</th>`
@@ -837,7 +897,9 @@
             parsedData.forEach(r => { r._importer = importer; r._phone = phone; r._team = team; });
             const rows = parsedData.slice(0, PREVIEW_ROW_LIMIT);
             bodyRow.innerHTML = rows.map((row, i) => {
-                const cells = csvKeys.map(k => `<td class="${td}" title="${esc(row[k])}">${esc(row[k])}</td>`).join('');
+                const cells = csvKeys.map(k => mode === 'shot' && SHOT_EDITABLE.includes(k)
+                    ? `<td class="${td} ${shotCellCls(row, k)}" contenteditable="true" data-i="${i}" data-k="${esc(k)}" title="${esc(row[k])}">${esc(row[k])}</td>`
+                    : `<td class="${td}" title="${esc(row[k])}">${esc(row[k])}</td>`).join('');
                 if (!processed) {
                     return `<tr class="hover:bg-slate-800/40"><td class="${td} text-slate-500">${i + 1}</td><td class="${td} text-sky-300">${importerCell}</td><td class="${td} text-sky-300">${phoneCell}</td><td class="${td} text-sky-300">${teamCell}</td>${cells}</tr>`;
                 }
@@ -855,6 +917,301 @@
                 `${csvKeys.length} fields \u00b7 showing ${shown} of ${parsedData.length} rows` + (parsedData.length > shown ? ' (preview limit)' : '');
             resultsSection.classList.remove('hidden');
         }
+
+        // ================= Import method switch + screenshot mode =================
+        const SHOT_EDITABLE = ['Date','ConnType','Lat','Lon','Download Speed','Download Size','Upload Speed','Upload Size','Latency','Server','InternalIp','ExternalIp'];
+        const TD_BASE = 'px-4 py-2.5 whitespace-nowrap max-w-xs truncate';
+        const csvPanel = document.getElementById('csvPanel');
+        const shotPanel = document.getElementById('shotPanel');
+        const modeCsvBtn = document.getElementById('modeCsvBtn');
+        const modeShotBtn = document.getElementById('modeShotBtn');
+        const shotInput = document.getElementById('shotInput');
+        const shotDrop = document.getElementById('shotDrop');
+        const shotProg = document.getElementById('shotProg');
+        const shotStatus = document.getElementById('shotStatus');
+
+        // Highlight empty cells (amber) and out-of-range coordinates (red) in the screenshot table
+        function shotCellCls(row, k) {
+            const v = String(row[k] == null ? '' : row[k]).trim();
+            if (!v) return 'bg-amber-900/40';
+            const n = +v;
+            if (k === 'Lat' && (isNaN(n) || Math.abs(n) > 90)) return 'bg-rose-900/50';
+            if (k === 'Lon' && (isNaN(n) || Math.abs(n) > 180)) return 'bg-rose-900/50';
+            return '';
+        }
+
+        function applyModeUI() {
+            const shot = mode === 'shot';
+            csvPanel.classList.toggle('hidden', shot);
+            shotPanel.classList.toggle('hidden', !shot);
+            const on = ['bg-sky-600', 'text-white'], off = ['text-slate-300', 'hover:bg-slate-800'];
+            [[modeCsvBtn, !shot], [modeShotBtn, shot]].forEach(([b, active]) => {
+                b.classList.remove(...on, ...off);
+                b.classList.add(...(active ? on : off));
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+        }
+
+        function setMode(next) {
+            if (next === mode) return;
+            if (ocrBusy) { alert('Please wait until the screenshots finish reading before switching.'); return; }
+            if (parsedData.length && !confirm('Switching the import method clears the current preview. Continue?')) return;
+            mode = next;
+            csvFile.value = '';
+            document.getElementById('csvPaste').value = '';
+            shotInput.value = '';
+            shotStatus.textContent = 'Idle';
+            resetLoaded();
+            applyModeUI();
+        }
+        modeCsvBtn.addEventListener('click', () => setMode('csv'));
+        modeShotBtn.addEventListener('click', () => setMode('shot'));
+
+        async function readShots(files) {
+            files = [...files].filter(f => f.type.startsWith('image/'));
+            if (!files.length) { alert('Please choose image files (Ookla result screenshots).'); return; }
+            if (ocrBusy) return;
+            if (typeof Tesseract === 'undefined' || !window.ShotOCR) {
+                shotStatus.textContent = 'The OCR engine could not be loaded. Check your internet connection and reload the page.';
+                return;
+            }
+            // New screenshots make any earlier check out of date
+            if (processed) { processed = false; statusBox.classList.add('hidden'); setImportState(0); }
+            ocrBusy = true;
+            shotProg.classList.remove('hidden');
+            shotProg.max = files.length;
+            shotProg.value = 0;
+            csvKeys = window.ShotOCR.keys;
+            try {
+                shotStatus.textContent = 'Loading OCR engine...';
+                await window.ShotOCR.init();
+                for (let i = 0; i < files.length; i++) {
+                    shotStatus.textContent = `Reading ${i + 1}/${files.length}: ${files[i].name}`;
+                    let row;
+                    try {
+                        row = await window.ShotOCR.readFile(files[i]);
+                    } catch (e) {
+                        console.warn('Screenshot failed:', files[i].name, e);
+                        row = {};
+                        window.ShotOCR.keys.forEach(k => { row[k] = ''; });
+                    }
+                    row.Screenshot = files[i].name;
+                    parsedData.push(row);
+                    shotProg.value = i + 1;
+                    renderTable();
+                }
+                shotStatus.textContent = `Done: ${files.length} screenshot(s) read. Check the values, then press Process & Check Duplicates.`;
+            } catch (err) {
+                shotStatus.textContent = 'Error: ' + err.message + ' (the OCR engine needs internet on first use)';
+                if (parsedData.length) renderTable();
+            }
+            shotProg.classList.add('hidden');
+            ocrBusy = false;
+        }
+
+        shotDrop.addEventListener('click', () => shotInput.click());
+        shotInput.addEventListener('click', e => e.stopPropagation());
+        shotInput.addEventListener('change', e => { readShots(e.target.files); e.target.value = ''; });
+        shotDrop.addEventListener('dragover', e => { e.preventDefault(); shotDrop.classList.add('border-sky-500'); });
+        shotDrop.addEventListener('dragleave', () => shotDrop.classList.remove('border-sky-500'));
+        shotDrop.addEventListener('drop', e => { e.preventDefault(); shotDrop.classList.remove('border-sky-500'); readShots(e.dataTransfer.files); });
+        document.getElementById('shotClearBtn').addEventListener('click', () => {
+            if (ocrBusy) return;
+            resetLoaded();
+            shotStatus.textContent = 'Idle';
+        });
+
+        // Edit OCR values in the preview (before or after checking); an edit after checking needs a re-check
+        const tableBody = document.getElementById('tableBodyRow');
+        tableBody.addEventListener('keydown', e => {
+            if (mode === 'shot' && e.key === 'Enter' && e.target.dataset && e.target.dataset.k) { e.preventDefault(); e.target.blur(); }
+        });
+        tableBody.addEventListener('focusout', e => {
+            const t = e.target;
+            if (mode !== 'shot' || !t.dataset || !t.dataset.k) return;
+            const row = parsedData[+t.dataset.i];
+            if (!row) return;
+            const v = t.textContent.trim();
+            if (String(row[t.dataset.k] == null ? '' : row[t.dataset.k]) === v) return;
+            row[t.dataset.k] = v;
+            if (processed) {
+                processed = false;
+                setImportState(0);
+                showSyncStatus('warn', '<strong>Values were edited.</strong> Press <em>Process &amp; Check Duplicates</em> again before importing.');
+                setTimeout(renderTable, 0);
+            } else {
+                t.className = TD_BASE + ' ' + shotCellCls(row, t.dataset.k);
+            }
+        });
+        applyModeUI();
+    </script>
+
+    <!-- Screenshot OCR module (logic copied from the standalone Ookla Screenshot Parser) -->
+    <script>
+    window.ShotOCR = (function () {
+        const COLS = [
+            ['dateTime','Date'],['ctype','ConnType'],['lat','Lat'],['lon','Lon'],
+            ['dl','Download Speed'],['dlData','Download Size'],['ul','Upload Speed'],['ulData','Upload Size'],
+            ['latency','Latency'],['server','Server'],['intIp','InternalIp'],['extIp','ExternalIp'],['url','URL']
+        ];
+        let worker = null;
+
+        function prep(img){
+            const s=Math.max(1,1800/img.width),c=document.createElement('canvas');
+            c.width=img.width*s;c.height=img.height*s;
+            const x=c.getContext('2d');x.drawImage(img,0,0,c.width,c.height);
+            const d=x.getImageData(0,0,c.width,c.height),p=d.data;
+            for(let i=0;i<p.length;i+=4){
+                let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+                g=255-g; g=Math.min(255,Math.max(0,(g-40)*1.25));
+                p[i]=p[i+1]=p[i+2]=g;
+            }
+            x.putImageData(d,0,0);return c;
+        }
+        const loadImg=f=>new Promise((res,rej)=>{const u=URL.createObjectURL(f),i=new Image();i.onload=()=>{URL.revokeObjectURL(u);res(i)};i.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('could not open '+f.name))};i.src=u});
+
+        function fmtDate(s){
+            const m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s*(\d{1,2}):(\d{2})\s*([AP])M/i);
+            if(!m)return '';
+            let[,mo,da,yr,h,mi,ap]=m;h=+h%12;if(ap.toUpperCase()==='P')h+=12;
+            if(yr.length==2)yr='20'+yr;
+            const z=n=>String(n).padStart(2,'0');
+            return `${z(mo)}/${z(da)}/${yr} ${z(h)}:${mi}:00`;
+        }
+        const validIp=v=>/^(\d{1,3}\.){3}\d{1,3}$/.test(v)&&v.split('.').every(n=>+n<=255);
+        function mkUrl(id){
+            if(/^\d{11}$/.test(id))return 'https://www.speedtest.net/my-result/a/'+id;
+            if(/^\d{10}$/.test(id))return 'https://www.speedtest.net/my-result/i/'+id;
+            return '';
+        }
+        function parse(data){
+            const t=data.text.replace(/[|]/g,'I'),lines=t.split('\n').map(s=>s.trim()).filter(Boolean);
+            const r={};
+            const id=(t.match(/Test\s*ID\s*(\d{6,})/i)||[])[1]||'';
+            r.url=mkUrl(id);
+            r.dateTime=fmtDate(t);
+            r.dl=(t.match(/DOWNLOAD[\s\S]{0,80}?(\d+\.\d+)\s*Mbps/)||[])[1]||'';
+            r.ul=(t.match(/UPLOAD[\s\S]{0,80}?(\d+\.\d+)\s*Mbps/)||[])[1]||'';
+            const du=[...t.matchAll(/Data\s*used\s*([\d.]+)\s*(KB|MB|GB)/gi)].map(m=>{const v=+m[1],u=m[2].toUpperCase();return +(u=='GB'?v*1024:u=='KB'?v/1024:v).toFixed(2)});
+            r.dlData=du[0]??'';r.ulData=du[1]??'';
+            const di=lines.findIndex(l=>/^Device/i.test(l));
+            r.server=di<0?'':(lines[di+3]||'');
+            const ll=t.match(/Lat:?\s*(-?\d+\.\d+)\s*Lon:?\s*(-?\d+\.\d+)/i);
+            r.lat=ll?ll[1]:'';r.lon=ll?ll[2]:'';
+            const ips=[...t.matchAll(/(\d{1,3}(?:\.\d{1,3}){3})/g)].map(m=>m[1]).filter(validIp);
+            r.intIp=(t.match(/[Il1]nternal\s*[Il1]P\W{0,3}(\d{1,3}(?:\.\d{1,3}){3})/i)||[])[1]||ips[0]||'';
+            r.extIp=(t.match(/[Ee]xternal\s*[Il1]P\W{0,3}(\d{1,3}(?:\.\d{1,3}){3})/i)||[])[1]||ips[1]||'';
+            r.latency='';r.ctype='';
+            return r;
+        }
+        function crop(c,x0,y0,x1,y1,pad=24,s=1){
+            x0=Math.max(0,x0);y0=Math.max(0,y0);x1=Math.min(c.width,x1);y1=Math.min(c.height,y1);
+            const w=(x1-x0)*s,h=(y1-y0)*s,o=document.createElement('canvas');
+            o.width=w+2*pad;o.height=h+2*pad;
+            const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,o.width,o.height);
+            x.drawImage(c,x0,y0,x1-x0,y1-y0,pad,pad,w,h);return o;
+        }
+        function binarize(cv){
+            const x=cv.getContext('2d'),d=x.getImageData(0,0,cv.width,cv.height),p=d.data,n=p.length/4;
+            let lo=255,hi=0;
+            for(let i=0;i<p.length;i+=4){lo=Math.min(lo,p[i]);hi=Math.max(hi,p[i])}
+            const h=new Array(256).fill(0),r=hi-lo||1;
+            for(let i=0;i<p.length;i+=4){const v=Math.round((p[i]-lo)*255/r);p[i]=v;h[v]++}
+            let sum=0;for(let i=0;i<256;i++)sum+=i*h[i];
+            let wB=0,sB=0,best=0,th=128;
+            for(let t=0;t<256;t++){wB+=h[t];if(!wB)continue;const wF=n-wB;if(!wF)break;sB+=t*h[t];
+                const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>best){best=v;th=t}}
+            for(let i=0;i<p.length;i+=4){const v=p[i]>th?255:0;p[i]=p[i+1]=p[i+2]=v}
+            x.putImageData(d,0,0);return cv;
+        }
+        async function ocrTry(cv,wl,modes,re){
+            const hits=[];
+            for(const m of modes){
+                await worker.setParameters({tessedit_char_whitelist:wl,tessedit_pageseg_mode:m});
+                const {data}=await worker.recognize(cv);
+                const t=data.text.replace(/\s/g,'').toUpperCase(),k=t.match(re);
+                if(k)hits.push(k[0]);
+            }
+            await worker.setParameters({tessedit_char_whitelist:'',tessedit_pageseg_mode:'3'});
+            return hits;
+        }
+        function classify(raw){
+            const t=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');
+            if(/W[I1L]F[I1L]/.test(t))return 'WiFi';
+            if(/L[T1I]E|UTE|LTF|^[LU]?[T1I]E$/.test(t))return '4G';
+            if(/[5S][G6C]/.test(t))return '5G';
+            if(/4[G6C]/.test(t))return '4G';
+            if(/3[G6C]/.test(t))return '3G';
+            return '';
+        }
+        const vote=h=>{const m={};h.forEach(x=>m[x]=(m[x]||0)+1);return Object.keys(m).sort((a,b)=>m[b]-m[a])[0]};
+        async function regionFields(r,data,c){
+            const W=c.width,ws=data.words;
+            const byTop=a=>a.sort((p,q)=>p.bbox.y0-q.bbox.y0);
+            // speed numbers: anchor on the DOWNLOAD / UPLOAD headings, else on the two "Mbps" words
+            const mb=byTop(ws.filter(w=>/^Mbps$/i.test(w.text)));
+            const spd=[['dl',ws.find(w=>/^DOWNLOAD$/.test(w.text)),mb[0]],['ul',ws.find(w=>/^UPLOAD$/.test(w.text)),mb[1]]];
+            for(const [k,lab,mbw] of spd){
+                let y0,y1;
+                if(lab){y0=lab.bbox.y1+.02*W;y1=lab.bbox.y1+.17*W}
+                else if(mbw){y0=mbw.bbox.y0-.15*W;y1=mbw.bbox.y0-.01*W}
+                else continue;
+                const hits=await ocrTry(binarize(crop(c,.4*W,y0,.97*W,y1)),'0123456789.',['8','13','7'],/^\d+\.\d+$/);
+                if(hits.length)r[k]=vote(hits);
+            }
+            // latency = idle ping: big number under the "Idle" label
+            const idle=ws.find(w=>/^Idle$/i.test(w.text));
+            if(idle){
+                const cv=binarize(crop(c,0,idle.bbox.y1+.015*W,.3*W,idle.bbox.y1+.15*W));
+                const hits=await ocrTry(cv,'0123456789',['8','13','7'],/^\d{1,4}$/);
+                if(hits.length)r.latency=vote(hits);
+            }
+            // ConnType badge (5G / LTE->4G / WiFi); row located from "Connection Type" label, else from "Device"
+            let cy=null;
+            const ci=ws.findIndex((w,i)=>/^Connection$/.test(w.text)&&/^Type/.test((ws[i+1]||{}).text||''));
+            if(ci>=0)cy=(ws[ci].bbox.y0+ws[ci].bbox.y1)/2+.021*W;
+            else{const dv=ws.find(w=>/^Device$/.test(w.text));if(dv)cy=(dv.bbox.y0+dv.bbox.y1)/2-.136*W+.021*W}
+            if(cy!==null){
+                const cx=.136*W,votes=[];
+                for(const [hw,hh] of [[.03,.025],[.025,.02],[.03,.03]]){
+                    const cv=binarize(crop(c,cx-hw*W,cy-hh*W,cx+hw*W,cy+hh*W,30,2));
+                    for(const [wl,m] of [['345GLTEWIF-','7'],['345GLTEWIF-','10'],['','7'],['','8']]){
+                        await worker.setParameters({tessedit_char_whitelist:wl,tessedit_pageseg_mode:m});
+                        const {data:d}=await worker.recognize(cv);
+                        const k=classify(d.text);if(k)votes.push(k);
+                    }
+                }
+                await worker.setParameters({tessedit_char_whitelist:'',tessedit_pageseg_mode:'3'});
+                r.ctype=votes.length?vote(votes):'';
+            }
+            // internal / external IP: read the digits right of each "IP:" label
+            for(const [lab,k] of [['Internal','intIp'],['External','extIp']]){
+                const i=ws.findIndex(w=>new RegExp('^[Il1]?'+lab.slice(1),'i').test(w.text));
+                if(i<0)continue;
+                const w=ws[i],n=ws[i+1],x0=n&&/^[Il1]P/i.test(n.text)?n.bbox.x1:w.bbox.x1+.06*W;
+                const cv=binarize(crop(c,x0,w.bbox.y0-.005*W,.95*W,w.bbox.y1+.005*W));
+                const hits=await ocrTry(cv,'0123456789.',['7','6'],/\d{1,3}(\.\d{1,3}){3}/);
+                const ok=hits.filter(validIp);
+                if(ok.length)r[k]=vote(ok);
+            }
+        }
+
+        async function init(){
+            if(!worker) worker = await Tesseract.createWorker('eng');
+        }
+        // Reads one screenshot; returns an object keyed by the CSV-style column names
+        async function readFile(file){
+            await init();
+            const img=await loadImg(file),c=prep(img);
+            const {data}=await worker.recognize(c);
+            const r=parse(data);
+            await regionFields(r,data,c);
+            const out={};
+            COLS.forEach(([k,h])=>{out[h]=r[k]??''});
+            return out;
+        }
+        return { keys: COLS.map(c=>c[1]).concat(['Screenshot']), init, readFile };
+    })();
     </script>
 </body>
 </html>
